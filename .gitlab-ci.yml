@@ -1,6 +1,5 @@
 # GitLab CI/CD Pipeline for workflow-test
 # Equivalent to .github/workflows/release.yml
-# Note: Uses cross-compilation for ARM64 since ARM64 runners require paid plans
 
 stages:
   - build
@@ -21,7 +20,7 @@ workflow:
   - echo "VERSION=$VERSION" >> build.env
 
 # =============================================================================
-# Linux Builds (all on AMD64 runner, ARM64 via cross-compilation)
+# Linux Builds
 # =============================================================================
 
 build-linux-amd64:
@@ -47,11 +46,7 @@ build-linux-arm64:
   stage: build
   image: golang:${GO_VERSION}
   tags:
-    - saas-linux-medium-amd64
-  variables:
-    CGO_ENABLED: "0"
-    GOOS: linux
-    GOARCH: arm64
+    - saas-linux-small-arm64
   before_script:
     - *version_script
   script:
@@ -115,7 +110,7 @@ package-linux-arm64:
   stage: package
   image: golang:${GO_VERSION}
   tags:
-    - saas-linux-medium-amd64
+    - saas-linux-small-arm64
   needs:
     - build-linux-arm64
   before_script:
