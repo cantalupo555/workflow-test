@@ -1,5 +1,6 @@
 # GitLab CI/CD Pipeline for workflow-test
 # Equivalent to .github/workflows/release.yml
+# Note: Uses cross-compilation for ARM64 since ARM64 runners require paid plans
 
 stages:
   - build
@@ -20,7 +21,7 @@ workflow:
   - echo "VERSION=$VERSION" >> build.env
 
 # =============================================================================
-# Linux Builds
+# Linux Builds (all on AMD64 runner, ARM64 via cross-compilation)
 # =============================================================================
 
 build-linux-amd64:
@@ -46,7 +47,11 @@ build-linux-arm64:
   stage: build
   image: golang:${GO_VERSION}
   tags:
-    - saas-linux-medium-arm64
+    - saas-linux-medium-amd64
+  variables:
+    CGO_ENABLED: "0"
+    GOOS: linux
+    GOARCH: arm64
   before_script:
     - *version_script
   script:
@@ -85,7 +90,7 @@ package-linux-amd64:
       description: |
         A simple test application to validate CI/CD release workflows.
       vendor: cantalupo555
-      homepage: https://gitlab.com/cantalupo555-group/workflow-test
+      homepage: https://gitlab.com/cantalupo555/workflow-test
       license: MIT
       contents:
         - src: ./bin/workflow-test_${VERSION}_linux_amd64
@@ -110,7 +115,7 @@ package-linux-arm64:
   stage: package
   image: golang:${GO_VERSION}
   tags:
-    - saas-linux-medium-arm64
+    - saas-linux-medium-amd64
   needs:
     - build-linux-arm64
   before_script:
@@ -126,7 +131,7 @@ package-linux-arm64:
       description: |
         A simple test application to validate CI/CD release workflows.
       vendor: cantalupo555
-      homepage: https://gitlab.com/cantalupo555-group/workflow-test
+      homepage: https://gitlab.com/cantalupo555/workflow-test
       license: MIT
       contents:
         - src: ./bin/workflow-test_${VERSION}_linux_arm64
@@ -260,7 +265,7 @@ create-release:
 
       #### Linux
       - `workflow-test_*_linux_amd64` - Linux AMD64 binary
-      - `workflow-test_*_linux_arm64` - Linux ARM64 binary
+      - `workflow-test_*_linux_arm64` - Linux ARM64 binary (cross-compiled)
       - `.deb` packages for Debian/Ubuntu
       - `.rpm` packages for Fedora/RHEL
 
