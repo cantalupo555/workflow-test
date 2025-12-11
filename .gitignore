@@ -1,0 +1,5 @@
+bin/
+*.exe
+*.deb
+*.rpm
+*.zip

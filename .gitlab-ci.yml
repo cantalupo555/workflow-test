@@ -1,0 +1,310 @@
+# GitLab CI/CD Pipeline for workflow-test
+# Equivalent to .github/workflows/release.yml
+
+stages:
+  - build
+  - package
+  - release
+
+variables:
+  GO_VERSION: "1.23"
+
+# Only run on version tags
+workflow:
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v.*/
+
+# Extract version from tag
+.version_script: &version_script
+  - export VERSION=${CI_COMMIT_TAG#v}
+  - echo "VERSION=$VERSION" >> build.env
+
+# =============================================================================
+# Linux Builds
+# =============================================================================
+
+build-linux-amd64:
+  stage: build
+  image: golang:${GO_VERSION}
+  tags:
+    - saas-linux-medium-amd64
+  before_script:
+    - *version_script
+  script:
+    - mkdir -p bin
+    - go build -ldflags="-X main.appVersion=$VERSION"
+        -o bin/workflow-test_${VERSION}_linux_amd64
+        ./cmd/app
+  artifacts:
+    paths:
+      - bin/
+    reports:
+      dotenv: build.env
+    expire_in: 1 hour
+
+build-linux-arm64:
+  stage: build
+  image: golang:${GO_VERSION}
+  tags:
+    - saas-linux-medium-arm64
+  before_script:
+    - *version_script
+  script:
+    - mkdir -p bin
+    - go build -ldflags="-X main.appVersion=$VERSION"
+        -o bin/workflow-test_${VERSION}_linux_arm64
+        ./cmd/app
+  artifacts:
+    paths:
+      - bin/
+    reports:
+      dotenv: build.env
+    expire_in: 1 hour
+
+# =============================================================================
+# Linux Packages (.deb and .rpm)
+# =============================================================================
+
+package-linux-amd64:
+  stage: package
+  image: golang:${GO_VERSION}
+  tags:
+    - saas-linux-medium-amd64
+  needs:
+    - build-linux-amd64
+  before_script:
+    - go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
+  script:
+    - |
+      cat > nfpm-amd64.yaml <<EOF
+      name: workflow-test
+      arch: amd64
+      platform: linux
+      version: ${VERSION}
+      maintainer: cantalupo555 <cantalupo@protonmail.com>
+      description: |
+        A simple test application to validate CI/CD release workflows.
+      vendor: cantalupo555
+      homepage: https://gitlab.com/cantalupo555-group/workflow-test
+      license: MIT
+      contents:
+        - src: ./bin/workflow-test_${VERSION}_linux_amd64
+          dst: /usr/bin/workflow-test
+          file_info:
+            mode: 0755
+        - src: ./README.md
+          dst: /usr/share/doc/workflow-test/README.md
+          file_info:
+            mode: 0644
+      EOF
+    - nfpm package -p deb -f nfpm-amd64.yaml
+    - nfpm package -p rpm -f nfpm-amd64.yaml
+    - mv *.deb bin/workflow-test_${VERSION}_linux_amd64.deb
+    - mv *.rpm bin/workflow-test_${VERSION}_linux_amd64.rpm
+  artifacts:
+    paths:
+      - bin/
+    expire_in: 1 hour
+
+package-linux-arm64:
+  stage: package
+  image: golang:${GO_VERSION}
+  tags:
+    - saas-linux-medium-arm64
+  needs:
+    - build-linux-arm64
+  before_script:
+    - go install github.com/goreleaser/nfpm/v2/cmd/nfpm@latest
+  script:
+    - |
+      cat > nfpm-arm64.yaml <<EOF
+      name: workflow-test
+      arch: arm64
+      platform: linux
+      version: ${VERSION}
+      maintainer: cantalupo555 <cantalupo@protonmail.com>
+      description: |
+        A simple test application to validate CI/CD release workflows.
+      vendor: cantalupo555
+      homepage: https://gitlab.com/cantalupo555-group/workflow-test
+      license: MIT
+      contents:
+        - src: ./bin/workflow-test_${VERSION}_linux_arm64
+          dst: /usr/bin/workflow-test
+          file_info:
+            mode: 0755
+        - src: ./README.md
+          dst: /usr/share/doc/workflow-test/README.md
+          file_info:
+            mode: 0644
+      EOF
+    - nfpm package -p deb -f nfpm-arm64.yaml
+    - nfpm package -p rpm -f nfpm-arm64.yaml
+    - mv *.deb bin/workflow-test_${VERSION}_linux_arm64.deb
+    - mv *.rpm bin/workflow-test_${VERSION}_linux_arm64.rpm
+  artifacts:
+    paths:
+      - bin/
+    expire_in: 1 hour
+
+# =============================================================================
+# Windows Build (Cross-compiled)
+# =============================================================================
+
+build-windows-amd64:
+  stage: build
+  image: golang:${GO_VERSION}
+  tags:
+    - saas-linux-medium-amd64
+  variables:
+    CGO_ENABLED: "0"
+    GOOS: windows
+    GOARCH: amd64
+  before_script:
+    - *version_script
+  script:
+    - mkdir -p bin
+    - go build -ldflags="-X main.appVersion=$VERSION"
+        -o bin/workflow-test_${VERSION}_windows_amd64.exe
+        ./cmd/app
+  artifacts:
+    paths:
+      - bin/
+    reports:
+      dotenv: build.env
+    expire_in: 1 hour
+
+# =============================================================================
+# macOS Builds (Cross-compiled from Linux)
+# =============================================================================
+
+build-macos-arm64:
+  stage: build
+  image: golang:${GO_VERSION}
+  tags:
+    - saas-linux-medium-amd64
+  variables:
+    CGO_ENABLED: "0"
+    GOOS: darwin
+    GOARCH: arm64
+  before_script:
+    - apt-get update && apt-get install -y zip
+    - *version_script
+  script:
+    - mkdir -p bin
+    - go build -ldflags="-X main.appVersion=$VERSION"
+        -o workflow-test
+        ./cmd/app
+    - zip bin/workflow-test_${VERSION}_macOS_arm64.zip workflow-test
+    - rm workflow-test
+  artifacts:
+    paths:
+      - bin/
+    reports:
+      dotenv: build.env
+    expire_in: 1 hour
+
+build-macos-amd64:
+  stage: build
+  image: golang:${GO_VERSION}
+  tags:
+    - saas-linux-medium-amd64
+  variables:
+    CGO_ENABLED: "0"
+    GOOS: darwin
+    GOARCH: amd64
+  before_script:
+    - apt-get update && apt-get install -y zip
+    - *version_script
+  script:
+    - mkdir -p bin
+    - go build -ldflags="-X main.appVersion=$VERSION"
+        -o workflow-test
+        ./cmd/app
+    - zip bin/workflow-test_${VERSION}_macOS_amd64.zip workflow-test
+    - rm workflow-test
+  artifacts:
+    paths:
+      - bin/
+    reports:
+      dotenv: build.env
+    expire_in: 1 hour
+
+# =============================================================================
+# Create GitLab Release
+# =============================================================================
+
+create-release:
+  stage: release
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  tags:
+    - saas-linux-medium-amd64
+  needs:
+    - build-linux-amd64
+    - build-linux-arm64
+    - package-linux-amd64
+    - package-linux-arm64
+    - build-windows-amd64
+    - build-macos-arm64
+    - build-macos-amd64
+  script:
+    - echo "Creating release for $CI_COMMIT_TAG"
+    - ls -la bin/
+  release:
+    tag_name: $CI_COMMIT_TAG
+    name: "Release $CI_COMMIT_TAG"
+    description: |
+      ## workflow-test $CI_COMMIT_TAG
+
+      ### Downloads
+
+      #### Linux
+      - `workflow-test_*_linux_amd64` - Linux AMD64 binary
+      - `workflow-test_*_linux_arm64` - Linux ARM64 binary
+      - `.deb` packages for Debian/Ubuntu
+      - `.rpm` packages for Fedora/RHEL
+
+      #### Windows
+      - `workflow-test_*_windows_amd64.exe` - Windows AMD64 binary
+
+      #### macOS
+      - `workflow-test_*_macOS_arm64.zip` - macOS Apple Silicon
+      - `workflow-test_*_macOS_amd64.zip` - macOS Intel
+    assets:
+      links:
+        - name: "Linux AMD64 Binary"
+          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_TAG}/raw/bin/workflow-test_${VERSION}_linux_amd64?job=build-linux-amd64"
+          filepath: "/binaries/workflow-test_linux_amd64"
+          link_type: package
+        - name: "Linux ARM64 Binary"
+          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_TAG}/raw/bin/workflow-test_${VERSION}_linux_arm64?job=build-linux-arm64"
+          filepath: "/binaries/workflow-test_linux_arm64"
+          link_type: package
+        - name: "Linux AMD64 DEB Package"
+          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_TAG}/raw/bin/workflow-test_${VERSION}_linux_amd64.deb?job=package-linux-amd64"
+          filepath: "/packages/workflow-test_linux_amd64.deb"
+          link_type: package
+        - name: "Linux AMD64 RPM Package"
+          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_TAG}/raw/bin/workflow-test_${VERSION}_linux_amd64.rpm?job=package-linux-amd64"
+          filepath: "/packages/workflow-test_linux_amd64.rpm"
+          link_type: package
+        - name: "Linux ARM64 DEB Package"
+          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_TAG}/raw/bin/workflow-test_${VERSION}_linux_arm64.deb?job=package-linux-arm64"
+          filepath: "/packages/workflow-test_linux_arm64.deb"
+          link_type: package
+        - name: "Linux ARM64 RPM Package"
+          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_TAG}/raw/bin/workflow-test_${VERSION}_linux_arm64.rpm?job=package-linux-arm64"
+          filepath: "/packages/workflow-test_linux_arm64.rpm"
+          link_type: package
+        - name: "Windows AMD64 Binary"
+          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_TAG}/raw/bin/workflow-test_${VERSION}_windows_amd64.exe?job=build-windows-amd64"
+          filepath: "/binaries/workflow-test_windows_amd64.exe"
+          link_type: package
+        - name: "macOS ARM64 (Apple Silicon)"
+          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_TAG}/raw/bin/workflow-test_${VERSION}_macOS_arm64.zip?job=build-macos-arm64"
+          filepath: "/binaries/workflow-test_macOS_arm64.zip"
+          link_type: package
+        - name: "macOS AMD64 (Intel)"
+          url: "${CI_PROJECT_URL}/-/jobs/artifacts/${CI_COMMIT_TAG}/raw/bin/workflow-test_${VERSION}_macOS_amd64.zip?job=build-macos-amd64"
+          filepath: "/binaries/workflow-test_macOS_amd64.zip"
+          link_type: package
