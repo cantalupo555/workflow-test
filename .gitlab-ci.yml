@@ -260,7 +260,7 @@ create-release:
 
       #### Linux
       - `workflow-test_*_linux_amd64` - Linux AMD64 binary
-      - `workflow-test_*_linux_arm64` - Linux ARM64 binary (cross-compiled)
+      - `workflow-test_*_linux_arm64` - Linux ARM64 binary
       - `.deb` packages for Debian/Ubuntu
       - `.rpm` packages for Fedora/RHEL
 
